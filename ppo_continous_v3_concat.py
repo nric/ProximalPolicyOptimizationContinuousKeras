@@ -1,20 +1,26 @@
 """This is an Tensorflow 2.0 (Keras) implementation of a Open Ai's proximal policy optimization PPO algorithem for continuous action spaces.
+
 Goal was to make it understanable yet not deviate from the original PPO idea: https://arxiv.org/abs/1707.06347 
+
 Part of the code base is from https://github.com/liziniu/RL-PPO-Keras . However, the code there had errors
 but mainly it did not use a GAE type reward and no entropy bonus system.
-The most complete explenation and also part of the code (i.e. Memory Class)
-is from the open ai spinning up project: https://spinningup.openai.com/en/latest/algorithms/ppo.html
+
 I gave my best to comment the code but I did not include a fundamental lecutre on the logic behind PPO. I highly 
 recommend to watch these two videos to undestand what happens.
 https://youtu.be/WxQfQW48A4A
 https://youtu.be/5P7I-xPq8u8
 
+The most complete explenation and also part of the code (i.e. Memory Class)
+is from the open ai spinning up project: https://spinningup.openai.com/en/latest/algorithms/ppo.html
 
-Next steps:
-1) Try some parameters to find a reasonably quick leraning agent
+I did NOT test this, there might be errors. In a first attempt, the best score was somewhere around -70 for bipedap-walker 
+which seems to show some leraning but not great learning.
+
+TODO / Next steps:
+1) Try some parameters to find a reasonably quick leraning agent. Currently does not converge or only very slowly.
 2) try use tf.distribution to replace maual Probability Density and entropy calculations. 
-4) try 2 outputs with one loss function. is this possible?
-5) try tf.probability layers independant_normal - does this even make sense ?
+3) Currently, the two outputs of actor (mu and sigma) are concatenated and then disassembled for the loss. Because the loss depends on both outputs at the same time (mu and sigma). I found this to be the only alternative to writing a custom train fuction with keras.function which seems not to work with TF 2.0 alpha. I should at least try to find a more elegant method.
+4) read and implement tf.probability layers independant_normal - does this even make sense here?
 """
 
 # %%
@@ -190,27 +196,20 @@ class Agent:
         # here y_true are the actions taken and y_pred are the predicted prob-distribution(mu,sigma) for each n in acion space
         def loss(y_true, y_pred):
             # First the probability density function.
-            log_probability_density_new = get_log_probability_density(
-                y_pred, y_true)
-            log_probability_density_old = get_log_probability_density(
-                old_prediction, y_true)
+            log_probability_density_new = get_log_probability_density(y_pred, y_true)
+            log_probability_density_old = get_log_probability_density(old_prediction, y_true)
             # Calc ratio and the surrogates
             # ratio = prob / (old_prob + K.epsilon()) #ratio new to old
-            ratio = K.backend.exp(
-                log_probability_density_new-log_probability_density_old)
+            ratio = K.backend.exp(log_probability_density_new-log_probability_density_old)
             surrogate1 = ratio * advantage
-            clip_ratio = K.backend.clip(
-                ratio, min_value=1 - self.CLIPPING_LOSS_RATIO, max_value=1 + self.CLIPPING_LOSS_RATIO)
+            clip_ratio = K.backend.clip(ratio, min_value=1 - self.CLIPPING_LOSS_RATIO, max_value=1 + self.CLIPPING_LOSS_RATIO)
             surrogate2 = clip_ratio * advantage
             # loss is the mean of the minimum of either of the surrogates
-            loss_actor = - \
-                K.backend.mean(K.backend.minimum(surrogate1, surrogate2))
+            loss_actor = - K.backend.mean(K.backend.minimum(surrogate1, surrogate2))
             # entropy bonus in accordance with move37 explanation https://youtu.be/kWHSH2HgbNQ
             sigma = y_pred[:, self.action_n:]
             variance = K.backend.square(sigma)
-            loss_entropy = self.ENTROPY_LOSS_RATIO * \
-                K.backend.mean(-(K.backend.log(2*np.pi*variance)+1) /
-                               2)  # see move37 chap 9.5
+            loss_entropy = self.ENTROPY_LOSS_RATIO * K.backend.mean(-(K.backend.log(2*np.pi*variance)+1) / 2)  # see move37 chap 9.5
             # total bonus is all losses combined. Add MSE-value-loss here as well?
             return loss_actor + loss_entropy
         return loss
@@ -227,15 +226,15 @@ class Agent:
         advantage = K.layers.Input(shape=(1,), name='advantage_input')
         old_prediction = K.layers.Input(shape=(2*self.action_n,), name='old_prediction_input')
         # define hidden layers
-        dense = K.layers.Dense(32, kernel_initializer='random_uniform', activation='relu', name='dense1')(state)
-        dense = K.layers.Dense(32, kernel_initializer='random_uniform', activation='relu', name='dense2')(dense)
+        dense = K.layers.Dense(32, activation='relu', name='dense1')(state)
+        dense = K.layers.Dense(32, activation='relu', name='dense2')(dense)
         # connect layers. In the continuous case the actions are not probabilities summing up to 1 (softmax)
         # but squshed numbers between -1 and 1 for each action (tanh). This represents the mu of a gaussian
         # distribution
-        mu = K.layers.Dense(self.action_n, kernel_initializer='random_uniform', activation='tanh',name="actor_output_mu")(dense)
+        mu = K.layers.Dense(self.action_n, activation='tanh',name="actor_output_mu")(dense)
         #mu = 2 * muactor_output_layer_continuous
         # in addtion, we have a second output layer representing the sigma for each action
-        sigma = K.layers.Dense(self.action_n, kernel_initializer='random_uniform', activation='softplus', name="actor_output_sigma")(dense)
+        sigma = K.layers.Dense(self.action_n, activation='softplus', name="actor_output_sigma")(dense)
         #sigma = sigma + K.backend.epsilon()
         # concat layers. The alterative would be to have two output heads but this would then require to make a custom
         # keras.function insead of the .compile and .fit routine adding more distraciton
@@ -258,10 +257,10 @@ class Agent:
         # define input layer
         state = K.layers.Input(shape=(self.state_dim[0],), name='state_input')
         # define hidden layers
-        dense = K.layers.Dense(32, kernel_initializer='random_uniform', activation='relu', name='dense1')(state)
-        dense = K.layers.Dense(32, kernel_initializer='random_uniform', activation='relu', name='dense2')(dense)
+        dense = K.layers.Dense(32, activation='relu', name='dense1')(state)
+        dense = K.layers.Dense(32, activation='relu', name='dense2')(dense)
         # connect the layers to a 1-dim output: scalar value of the state (= Q value or V(s))
-        V = K.layers.Dense(1, kernel_initializer='random_uniform', name="actor_output_layer")(dense)
+        V = K.layers.Dense(1, name="actor_output_layer")(dense)
         # make keras.Model
         critic_network = K.Model(inputs=state, outputs=V)
         # compile. Here the connection to the PPO loss fuction is made. The input placeholders are passed.

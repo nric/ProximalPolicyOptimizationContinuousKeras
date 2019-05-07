@@ -20,5 +20,5 @@ which seems to show some leraning but not great learning.
 TODO / Next steps:
 1) Try some parameters to find a reasonably quick leraning agent. Currently does not converge or only very slowly.
 2) try use tf.distribution to replace maual Probability Density and entropy calculations. 
-3) try 2 outputs with one loss function. is this possible?
+3) Currently, the two outputs of actor (mu and sigma) are concatenated and then disassembled for the loss. Because the loss depends on both outputs at the same time (mu and sigma). I found this to be the only alternative to writing a custom train fuction with keras.function which seems not to work with TF 2.0 alpha. I should at least try to find a more elegant method.
 4) read and implement tf.probability layers independant_normal - does this even make sense here?

@@ -14,7 +14,7 @@ https://youtu.be/5P7I-xPq8u8
 The most complete explenation and also part of the code (i.e. Memory Class)
 is from the open ai spinning up project: https://spinningup.openai.com/en/latest/algorithms/ppo.html
 
-I did NOT test this, there might be errors. In a first attempt, the best score was somewhere around -70 for bipedap-walker 
+I did NOT test this in depth. There might be errors. In a first attempt, the best score was somewhere around -70 for bipedap-walker 
 which seems to show some leraning but not great learning.
 
 TODO / Next steps:
